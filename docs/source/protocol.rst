@@ -126,7 +126,7 @@ simulation, which means that any information related to the last or current
 simulation will be deleted.
 
 This request is useful to be executed always when starting the client, to make
-sure the server starts with a client state too.
+sure the server starts with a clean state too.
 
 The server always replies back with an ``ok``.
 
