@@ -16,41 +16,7 @@ from pyqtgraph import GraphicsLayoutWidget
 
 from .graphics import MazeItem
 from .mazes import load_maze
-
-
-class ZMQListener(QtCore.QObject):
-
-    message = QtCore.pyqtSignal(bytes)
-
-    def __init__(self, context, host, port):
-        super().__init__()
-
-        self.rep = context.socket(zmq.REP)
-        self.rep.bind('tcp://{host}:{port}'.format(host=host, port=port))
-        self.pull = context.socket(zmq.PULL)
-        self.pull.bind('inproc://reply')
-
-        self.poller = zmq.Poller()
-        self.poller.register(self.rep, zmq.POLLIN)
-        self.poller.register(self.pull, zmq.POLLIN)
-
-        self.running = True
-
-    def loop(self):
-        while self.running:
-            events = dict(self.poller.poll(10))
-            if not events:
-                continue
-            self.process_events(events)
-
-    def process_events(self, events):
-        for socket in events:
-            if events[socket] != zmq.POLLIN:
-                continue
-            if socket == self.rep:
-                self.message.emit(socket.recv())
-            elif socket == self.pull:
-                self.rep.send(socket.recv())
+from .server import Server
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -116,18 +82,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(main_widget)
         self.filter_mazes('')
 
-        self.context = zmq.Context()
-        self.reply = self.context.socket(zmq.PUSH)
-        self.reply.connect('inproc://reply')
-
-        self.thread = QtCore.QThread()
-        self.zeromq_listener = ZMQListener(self.context, host=host, port=port)
-        self.zeromq_listener.moveToThread(self.thread)
-
-        self.thread.started.connect(self.zeromq_listener.loop)
-        self.zeromq_listener.message.connect(self.signal_received)
-
-        QtCore.QTimer.singleShot(0, self.thread.start)
+        self.server = Server(host=host, port=port)
+        self.server.start()
 
     def filter_mazes(self, text):
         keywords = text.lower().split(' ')
@@ -175,30 +131,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def status_set_slider(self, value):
         self.status.showMessage('{}/{}'.format(value, len(self.history) - 1))
 
-    def signal_received(self, message):
-        if message.startswith(b'W'):
-            walls = self.maze.read_position_walls(message.lstrip(b'W'))
-            self.reply.send(struct.pack('3B', *walls))
-            return
-        if message.startswith(b'S'):
-            message = message.lstrip(b'S')
-            self.history.append(message)
-            self.reply.send(b'ok')
-            self.slider_update()
-            return
-        if message == b'reset':
-            self.reset()
-            self.reply.send(b'ok')
-            return
-        if message == b'ping':
-            self.reply.send(b'pong')
-            return
-        raise ValueError('Unknown message received! "{}"'.format(message))
-
     def closeEvent(self, event):
-        self.zeromq_listener.running = False
-        self.thread.quit()
-        self.thread.wait()
+        # TODO: join() server?
+        pass
 
 
 def run(host, port, path):

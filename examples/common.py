@@ -169,6 +169,7 @@ class Simulator:
             if self.position in self.goals:
                 break
             self.move(self.best_step())
+            print(self.position)
 
     @abstractmethod
     def calculate_distances(self):
